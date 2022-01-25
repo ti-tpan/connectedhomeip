@@ -228,6 +228,24 @@ CHIP_ERROR P6Config::FactoryResetConfig(void)
         }
     }
 
+    // TODO: Cleanup
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric0");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric1");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric2");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric3");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric4");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric5");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric6");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric7");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric8");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabric9");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabrica");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabricb");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabricc");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabricd");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabrice");
+    PersistedStorage::KeyValueStoreMgr().Delete("Fabricf");
+
     return CHIP_NO_ERROR;
 }
 
