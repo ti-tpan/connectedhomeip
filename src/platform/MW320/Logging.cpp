@@ -150,7 +150,7 @@ void LogV(const char * module, uint8_t category, const char * msg, va_list v)
 {
     (void) module;
     (void) category;
-    
+
     PRINTF("%s: ", module);
     PRINTF(msg, v);
     PRINTF("\r\n");
