@@ -38,3 +38,4 @@ struct ChipDeviceEvent;
 #define CHIP_SYSTEM_CONFIG_EVENT_OBJECT_TYPE const struct ::chip::DeviceLayer::ChipDeviceEvent *
 
 // ========== Platform-specific Configuration Overrides =========
+//#define CHIP_SYSTEM_CONFIG_PACKETBUFFER_POOL_SIZE 30 // "This may be set to zero (0) to enable unbounded dynamic allocation..."
