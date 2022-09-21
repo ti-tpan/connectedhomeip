@@ -46,7 +46,7 @@ private:
     int Init();
 
     // should this be done by BoltLock Manager? I don't want to unravel this spaghetti quite yet
-    static void ActionInitiated(BoltLockManager::Action_t aAction, int32_t aActor);
+    static void ActionInitiated(BoltLockManager::Action_t aAction, BoltLockManager::Actor_t aActor);
     static void ActionCompleted(BoltLockManager::Action_t aAction);
 
     void DispatchEvent(AppEvent * event);
@@ -54,6 +54,7 @@ private:
     static void ButtonLeftEventHandler(Button_Handle handle, Button_EventMask events);
     static void ButtonRightEventHandler(Button_Handle handle, Button_EventMask events);
     static void TimerEventHandler(void * p_context);
+    static void UpdateClusterState(intptr_t context);
 
     enum Function_t
     {
@@ -66,6 +67,7 @@ private:
 
     Function_t mFunction;
     bool mFunctionTimerActive;
+    bool mSyncClusterToButtonAction;
 
     static AppTask sAppTask;
 };

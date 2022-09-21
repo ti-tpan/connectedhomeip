@@ -39,6 +39,11 @@
 
 #include <app/server/OnboardingCodesUtil.h>
 
+#include <app-common/zap-generated/attribute-id.h>
+#include <app-common/zap-generated/attribute-type.h>
+#include <app-common/zap-generated/cluster-id.h>
+#include <app/util/attribute-storage.h>
+
 #include <ti/drivers/apps/Button.h>
 #include <ti/drivers/apps/LED.h>
 
@@ -194,6 +199,7 @@ int AppTask::Init()
     // Initialize BoltLock module
     PLAT_LOG("Initialize BoltLock");
     BoltLockMgr().Init();
+    chip::DeviceLayer::PlatformMgr().ScheduleWork(UpdateClusterState, reinterpret_cast<intptr_t>(nullptr));
 
     BoltLockMgr().SetCallbacks(ActionInitiated, ActionCompleted);
 
@@ -271,7 +277,7 @@ void AppTask::ButtonRightEventHandler(Button_Handle handle, Button_EventMask eve
     }
 }
 
-void AppTask::ActionInitiated(BoltLockManager::Action_t aAction, int32_t aActor)
+void AppTask::ActionInitiated(BoltLockManager::Action_t aAction, BoltLockManager::Actor_t aActor)
 {
     // If the action has been initiated by the lock, update the bolt lock trait
     // and start flashing the LEDs rapidly to indicate action initiation.
@@ -284,6 +290,11 @@ void AppTask::ActionInitiated(BoltLockManager::Action_t aAction, int32_t aActor)
     {
         PLAT_LOG("Unlock initiated");
         ; // TODO
+    }
+
+    if (BoltLockManager::ACTOR_APP == aActor)
+    {
+        sAppTask.mSyncClusterToButtonAction = true;
     }
 
     LED_setOn(sAppGreenHandle, LED_BRIGHTNESS_MAX);
@@ -313,6 +324,12 @@ void AppTask::ActionCompleted(BoltLockManager::Action_t aAction)
         LED_stopBlinking(sAppRedHandle);
         LED_setOff(sAppRedHandle);
     }
+    
+    if (sAppTask.mSyncClusterToButtonAction)
+    {
+        chip::DeviceLayer::PlatformMgr().ScheduleWork(UpdateClusterState, reinterpret_cast<intptr_t>(nullptr));
+        sAppTask.mSyncClusterToButtonAction = false;
+    }
 }
 
 void AppTask::DispatchEvent(AppEvent * aEvent)
@@ -324,7 +341,7 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
         {
             if (!BoltLockMgr().IsUnlocked())
             {
-                BoltLockMgr().InitiateAction(0, BoltLockManager::UNLOCK_ACTION);
+                BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_APP, BoltLockManager::UNLOCK_ACTION);
             }
         }
         else if (AppEvent::kAppEventButtonType_LongClicked == aEvent->ButtonEvent.Type)
@@ -343,7 +360,7 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
         {
             if (BoltLockMgr().IsUnlocked())
             {
-                BoltLockMgr().InitiateAction(0, BoltLockManager::LOCK_ACTION);
+                BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_APP, BoltLockManager::LOCK_ACTION);
             }
         }
         else if (AppEvent::kAppEventButtonType_LongClicked == aEvent->ButtonEvent.Type)
@@ -373,5 +390,20 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
     case AppEvent::kEventType_None:
     default:
         break;
+    }
+}
+
+void AppTask::UpdateClusterState(intptr_t context)
+{
+    PLAT_LOG("AppTask::UpdateClusterState");
+
+    uint8_t newValue = !BoltLockMgr().IsUnlocked();
+
+    // write the new on/off value
+    EmberAfStatus status = emberAfWriteAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
+                                                 (uint8_t *) &newValue, ZCL_BOOLEAN_ATTRIBUTE_TYPE);
+    if (status != EMBER_ZCL_STATUS_SUCCESS)
+    {
+        PLAT_LOG("ERR: updating on/off %x", status);
     }
 }

@@ -73,7 +73,7 @@ void BoltLockManager::SetAutoLockDuration(uint32_t aDurationInSecs)
     mAutoLockDuration = aDurationInSecs;
 }
 
-bool BoltLockManager::InitiateAction(int32_t aActor, Action_t aAction)
+bool BoltLockManager::InitiateAction(Actor_t aActor, Action_t aAction)
 {
     bool action_initiated = false;
     State_t new_state;
@@ -152,7 +152,7 @@ void BoltLockManager::TimerEventHandler(TimerHandle_t aTimer)
 void BoltLockManager::AutoReLockTimerEventHandler(AppEvent * aEvent)
 {
     BoltLockManager * lock = static_cast<BoltLockManager *>(aEvent->BoltLockEvent.Context);
-    int32_t actor          = 0;
+    Actor_t actor          = ACTOR_APP;
 
     // Make sure auto lock timer is still armed.
     if (!lock->mAutoLockTimerArmed)
