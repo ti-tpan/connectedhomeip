@@ -31,7 +31,7 @@ void MatterPostAttributeChangeCallback(const chip::app::ConcreteAttributePath & 
 {
     if (attributePath.mClusterId == OnOff::Id && attributePath.mAttributeId == OnOff::Attributes::OnOff::Id)
     {
-        BoltLockMgr().InitiateAction(0, *value ? BoltLockManager::LOCK_ACTION : BoltLockManager::UNLOCK_ACTION);
+        BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_ZCL, *value ? BoltLockManager::LOCK_ACTION : BoltLockManager::UNLOCK_ACTION);
     }
 }
 

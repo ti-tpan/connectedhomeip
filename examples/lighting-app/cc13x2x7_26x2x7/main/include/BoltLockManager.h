@@ -38,6 +38,12 @@ public:
         INVALID_ACTION
     } Action;
 
+    enum Actor_t
+    {
+        ACTOR_ZCL = 0,
+	ACTOR_APP,
+    } Actor;
+
     enum State_t
     {
         kState_LockingInitiated = 0,
@@ -51,9 +57,9 @@ public:
     void EnableAutoRelock(bool aOn);
     void SetAutoLockDuration(uint32_t aDurationInSecs);
     bool IsActionInProgress();
-    bool InitiateAction(int32_t aActor, Action_t aAction);
+    bool InitiateAction(Actor_t aActor, Action_t aAction);
 
-    typedef void (*Callback_fn_initiated)(Action_t, int32_t aActor);
+    typedef void (*Callback_fn_initiated)(Action_t, Actor_t);
     typedef void (*Callback_fn_completed)(Action_t);
     void SetCallbacks(Callback_fn_initiated aActionInitiated_CB, Callback_fn_completed aActionCompleted_CB);
 
