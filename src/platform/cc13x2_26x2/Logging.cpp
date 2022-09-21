@@ -21,6 +21,7 @@ char sDebugUartBuffer[CHIP_CONFIG_LOG_MESSAGE_MAX_SIZE];
 #if MATTER_CC13X2_26X2_PLATFORM_LOG_ENABLED
 extern "C" int cc13x2_26x2LogInit(void)
 {
+#if !CHIP_DEVICE_LOW_POWER
     UART_Params uartParams;
 
     UART_init();
@@ -32,11 +33,13 @@ extern "C" int cc13x2_26x2LogInit(void)
     uartParams.writeTimeout = 10000; // ticks
 
     sDebugUartHandle = UART_open(CONFIG_UART_DEBUG, &uartParams);
+#endif
     return 0;
 }
 
 extern "C" void cc13x2_26x2VLog(const char * msg, va_list v)
 {
+//#if !CHIP_DEVICE_LOW_POWER
     int ret;
 
     ret = vsnprintf(sDebugUartBuffer, sizeof(sDebugUartBuffer), msg, v);
@@ -46,9 +49,11 @@ extern "C" void cc13x2_26x2VLog(const char * msg, va_list v)
         size_t len                = (ret + 2U) < sizeof(sDebugUartBuffer) ? (ret + 2) : sizeof(sDebugUartBuffer);
         sDebugUartBuffer[len - 2] = '\r';
         sDebugUartBuffer[len - 1] = '\n';
-
+#if !CHIP_DEVICE_LOW_POWER
         UART_write(sDebugUartHandle, sDebugUartBuffer, len);
+#endif
     }
+//#endif
 }
 
 #else
