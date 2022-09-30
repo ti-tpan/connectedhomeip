@@ -393,6 +393,64 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
     }
 }
 
+void AppTask::RoutineLevelAdjust(chip::System::Layer * systemLayer, void * appState)
+{
+    // toby: note: this is optimized for quick code-writing.
+    // if it is useful in the future, will consider re-factoring it for better coding convention.
+
+    static bool isActive = false;
+
+    if (isActive) return;
+    
+    // check that unit is "off". if "off", exit.
+    uint8_t isOn;
+    EmberAfStatus status = emberAfReadAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
+                                                 (uint8_t *) &isOn, 1, NULL);
+    if (status != EMBER_ZCL_STATUS_SUCCESS)
+    {
+        PLAT_LOG("ERR: reading on/off %x", status);
+        return;
+    }
+    if (!isOn)
+    {
+        isActive = false;
+	return;
+    }
+    
+    // read Level Control value
+    uint8_t curLevel;
+    status = emberAfReadAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
+                                                 (uint8_t *) &curLevel, 1, NULL);
+    if (status != EMBER_ZCL_STATUS_SUCCESS)
+    {
+        PLAT_LOG("ERR: reading level control %x", status);
+        return;
+    }
+    // if Level is not already maxed out
+    if (curLevel < 232)
+    {
+    	// adjust Level Control
+	// note: writing the attribute will trigger the report
+	uint8_t newLevel = curLevel + 2;
+	status = emberAfWriteAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
+						     (uint8_t *) &newLevel, ZCL_INT8U_ATTRIBUTE_TYPE);
+	if (status != EMBER_ZCL_STATUS_SUCCESS)
+	{
+	    PLAT_LOG("ERR: updating Level Control %x", status);
+	    return;
+	}
+	
+    	// start countdown for next call of this function
+	chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), RoutineLevelAdjust, reinterpret_cast<intptr_t>(nullptr));	
+    }
+    else
+    {
+	isActive = false;
+    }
+    
+    
+}
+
 void AppTask::UpdateClusterState(intptr_t context)
 {
     PLAT_LOG("AppTask::UpdateClusterState");
@@ -405,5 +463,20 @@ void AppTask::UpdateClusterState(intptr_t context)
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         PLAT_LOG("ERR: updating on/off %x", status);
+	return;
     }
+    uint8_t newLevel = 64; // ~25%
+    status = emberAfWriteAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
+                                                 (uint8_t *) &newLevel, ZCL_INT8U_ATTRIBUTE_TYPE);
+    if (status != EMBER_ZCL_STATUS_SUCCESS)
+    {
+        PLAT_LOG("ERR: updating Level Control %x", status);
+        return;
+    }
+    
+    if (newValue)
+    {
+        chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), RoutineLevelAdjust, reinterpret_cast<intptr_t>(nullptr));
+    }
+    
 }

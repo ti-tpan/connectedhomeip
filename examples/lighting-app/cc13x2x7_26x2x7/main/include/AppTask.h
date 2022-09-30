@@ -30,6 +30,7 @@
 #include "BoltLockManager.h"
 
 #include <ti/drivers/apps/Button.h>
+#include <platform/CHIPDeviceLayer.h>
 
 class AppTask
 {
@@ -55,6 +56,7 @@ private:
     static void ButtonRightEventHandler(Button_Handle handle, Button_EventMask events);
     static void TimerEventHandler(void * p_context);
     static void UpdateClusterState(intptr_t context);
+    static void RoutineLevelAdjust(chip::System::Layer * systemLayer, void * appState);
 
     enum Function_t
     {
