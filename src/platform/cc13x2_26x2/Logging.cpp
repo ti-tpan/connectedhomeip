@@ -20,6 +20,7 @@ char sDebugUartBuffer[CHIP_CONFIG_LOG_MESSAGE_MAX_SIZE];
 
 extern "C" int cc13x2_26x2LogInit(void)
 {
+#if CHIP_DEVICE_PLAT_USE_LOGS
 #if !CHIP_DEVICE_LOW_POWER
     UART_Params uartParams;
 
@@ -33,11 +34,13 @@ extern "C" int cc13x2_26x2LogInit(void)
 
     sDebugUartHandle = UART_open(CONFIG_UART_DEBUG, &uartParams);
 #endif
+#endif // CHIP_DEVICE_PLAT_USE_LOGS
     return 0;
 }
 
 extern "C" void cc13x2_26x2VLog(const char * msg, va_list v)
 {
+#if CHIP_DEVICE_PLAT_USE_LOGS
 //#if !CHIP_DEVICE_LOW_POWER
     int ret;
 
@@ -53,6 +56,7 @@ extern "C" void cc13x2_26x2VLog(const char * msg, va_list v)
 #endif
     }
 //#endif
+#endif // CHIP_DEVICE_PLAT_USE_LOGS
 }
 
 namespace chip {

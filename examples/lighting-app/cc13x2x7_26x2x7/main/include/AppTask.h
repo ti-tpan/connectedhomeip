@@ -57,6 +57,7 @@ private:
     static void TimerEventHandler(void * p_context);
     static void UpdateClusterState(intptr_t context);
     static void RoutineLevelAdjust(chip::System::Layer * systemLayer, void * appState);
+    static void CheckCommissioningStatus(chip::System::Layer * systemLayer, void * appState);
 
     enum Function_t
     {

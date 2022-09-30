@@ -283,13 +283,11 @@ void AppTask::ActionInitiated(BoltLockManager::Action_t aAction, BoltLockManager
     // and start flashing the LEDs rapidly to indicate action initiation.
     if (aAction == BoltLockManager::LOCK_ACTION)
     {
-        PLAT_LOG("Lock initiated");
-        ; // TODO
+        PLAT_LOG("Lock initiated");     
     }
     else if (aAction == BoltLockManager::UNLOCK_ACTION)
     {
         PLAT_LOG("Unlock initiated");
-        ; // TODO
     }
 
     if (BoltLockManager::ACTOR_APP == aActor)
@@ -297,10 +295,6 @@ void AppTask::ActionInitiated(BoltLockManager::Action_t aAction, BoltLockManager
         sAppTask.mSyncClusterToButtonAction = true;
     }
 
-    LED_setOn(sAppGreenHandle, LED_BRIGHTNESS_MAX);
-    LED_startBlinking(sAppGreenHandle, 50 /* ms */, LED_BLINK_FOREVER);
-    LED_setOn(sAppRedHandle, LED_BRIGHTNESS_MAX);
-    LED_startBlinking(sAppRedHandle, 110 /* ms */, LED_BLINK_FOREVER);
 }
 
 void AppTask::ActionCompleted(BoltLockManager::Action_t aAction)
@@ -310,17 +304,12 @@ void AppTask::ActionCompleted(BoltLockManager::Action_t aAction)
     // Turn off the lock LED if in an UNLOCKED state.
     if (aAction == BoltLockManager::LOCK_ACTION)
     {
-        PLAT_LOG("Lock completed");
-        LED_stopBlinking(sAppGreenHandle);
-        LED_setOn(sAppGreenHandle, LED_BRIGHTNESS_MAX);
-        LED_stopBlinking(sAppRedHandle);
-        LED_setOn(sAppRedHandle, LED_BRIGHTNESS_MAX);
+        PLAT_LOG("Charging Device connected");
+        LED_startBlinking(sAppRedHandle, 250 /* ms */, LED_BLINK_FOREVER);
     }
     else if (aAction == BoltLockManager::UNLOCK_ACTION)
     {
-        PLAT_LOG("Unlock completed");
-        LED_stopBlinking(sAppGreenHandle);
-        LED_setOff(sAppGreenHandle);
+        PLAT_LOG("Charging Device disconnected");
         LED_stopBlinking(sAppRedHandle);
         LED_setOff(sAppRedHandle);
     }
@@ -351,6 +340,8 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
             {
                 ConnectivityMgr().SetBLEAdvertisingEnabled(false);
                 PLAT_LOG("Disabled BLE Advertisements");
+		LED_stopBlinking(sAppGreenHandle);
+		LED_setOff(sAppGreenHandle);
             }
         }
         break;
@@ -371,6 +362,8 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
                 if (Server::GetInstance().GetCommissioningWindowManager().OpenBasicCommissioningWindow() == CHIP_NO_ERROR)
                 {
                     PLAT_LOG("Enabled BLE Advertisement");
+                    LED_startBlinking(sAppGreenHandle, 500, LED_BLINK_FOREVER);                 
+    	            chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(1), CheckCommissioningStatus, reinterpret_cast<intptr_t>(nullptr));	
                 }
                 else
                 {
@@ -440,12 +433,14 @@ void AppTask::RoutineLevelAdjust(chip::System::Layer * systemLayer, void * appSt
 	    return;
 	}
 	
-    	// start countdown for next call of this function
+   	// start countdown for next call of this function
 	chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), RoutineLevelAdjust, reinterpret_cast<intptr_t>(nullptr));	
     }
     else
     {
-	isActive = false;
+        isActive = false;
+        LED_stopBlinking(sAppRedHandle);
+        LED_setOn(sAppRedHandle, 50);
     }
     
     
@@ -479,4 +474,36 @@ void AppTask::UpdateClusterState(intptr_t context)
         chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), RoutineLevelAdjust, reinterpret_cast<intptr_t>(nullptr));
     }
     
+}
+
+void AppTask::CheckCommissioningStatus(chip::System::Layer * systemLayer, void * appState)
+{
+    // toby: after BLE adv starts for commissioning, this function periodically checks the commissioning status (BLE, Thread, etc)
+    // and updates the associated LED status accordingly
+    
+    // assume this usecase always:
+    // button starts BLE adv
+    // before BLE stops adv, commissioner will initiate the connection
+    // now, device is waiting for Thread commissioning
+    // once Thread commissioning is done, keep LED on
+
+    if (ConnectivityMgr().IsBLEAdvertising())
+    {
+        // blink LED at 500 msec interval
+        LED_startBlinking(sAppGreenHandle, 250, LED_BLINK_FOREVER);
+    }
+    else if (!(ConnectivityMgr().IsThreadAttached() && ConnectivityMgr().IsThreadProvisioned()))
+    {
+        LED_startBlinking(sAppGreenHandle, 500, LED_BLINK_FOREVER);
+    }
+    else
+    {
+        LED_stopBlinking(sAppGreenHandle);
+        LED_setOff(sAppGreenHandle);
+        return;
+    }
+
+   	// start countdown for next checkup
+	chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), CheckCommissioningStatus, reinterpret_cast<intptr_t>(nullptr));	
+
 }
