@@ -30,6 +30,7 @@
 #include "BoltLockManager.h"
 
 #include <ti/drivers/apps/Button.h>
+#include <ti/drivers/UART.h>
 #include <platform/CHIPDeviceLayer.h>
 
 class AppTask
@@ -56,8 +57,14 @@ private:
     static void ButtonRightEventHandler(Button_Handle handle, Button_EventMask events);
     static void TimerEventHandler(void * p_context);
     static void UpdateClusterState(intptr_t context);
+    
     static void RoutineLevelAdjust(chip::System::Layer * systemLayer, void * appState);
     static void CheckCommissioningStatus(chip::System::Layer * systemLayer, void * appState);
+    
+    static void AppUartReadCallback(UART_Handle, void*, size_t);
+    static void CarConnectedHandler(AppEvent *);
+    static void CarDisconnectedHandler(AppEvent *);
+    static void NewChargeData(AppEvent *);
 
     enum Function_t
     {
@@ -70,7 +77,7 @@ private:
 
     Function_t mFunction;
     bool mFunctionTimerActive;
-    bool mSyncClusterToButtonAction;
+    bool mSyncClusterToLocalAction;
 
     static AppTask sAppTask;
 };

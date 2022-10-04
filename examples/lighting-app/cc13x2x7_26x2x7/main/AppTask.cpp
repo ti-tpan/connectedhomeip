@@ -54,6 +54,25 @@
 #define APP_TASK_PRIORITY 4
 #define APP_EVENT_QUEUE_SIZE 10
 
+// local data structures
+typedef struct
+{
+    uint8_t isCarConnected;
+    uint8_t chargeLevel; // 254 means 100%
+} EVChargeData;
+typedef enum
+{
+    TLV_Type_bool = 'b',
+    TLV_Type_uint8 = 'c',
+    TLV_Type_uint16 = 'd',
+} TLV_Type;
+typedef struct
+{
+    TLV_Type type;
+    uint8_t length;
+    uint32_t value;
+} TLV;
+
 using namespace ::chip;
 using namespace ::chip::Credentials;
 using namespace ::chip::DeviceLayer;
@@ -65,6 +84,14 @@ static LED_Handle sAppRedHandle;
 static LED_Handle sAppGreenHandle;
 static Button_Handle sAppLeftHandle;
 static Button_Handle sAppRightHandle;
+static UART_Handle sUartHandle;
+static uint8_t sDataBuf[11] = {0}; // we know what the packet structure will look like
+static EVChargeData sEvChargerData =
+{
+    .isCarConnected = 0,
+    .chargeLevel = 0,
+};
+
 
 AppTask AppTask::sAppTask;
 
@@ -84,6 +111,97 @@ void InitializeOTARequestor(void)
     sImageProcessor.SetOTADownloader(&sDownloader);
     sDownloader.SetImageProcessorDelegate(&sImageProcessor);
     sRequestorUser.Init(&sRequestorCore, &sImageProcessor);
+}
+
+static void LocalErrorSpin()
+{
+
+    // error...
+    if (sAppGreenHandle != 0)
+    {
+        LED_setOn(sAppGreenHandle, LED_BRIGHTNESS_MAX);
+        LED_startBlinking(sAppGreenHandle, 500, LED_BLINK_FOREVER);
+    }
+    if (sAppRedHandle != 0)
+    {
+        LED_setOff(sAppRedHandle);
+        LED_startBlinking(sAppRedHandle, 500, LED_BLINK_FOREVER);
+    }
+    while (1);
+}
+void AppTask::AppUartReadCallback(UART_Handle handle, void * buf, size_t count)
+{
+    const uint8_t magicHeader[] = {'B', 'E', 'B', 'E'};
+    uint8_t* pData = (uint8_t*) buf;
+    if (!memcmp(pData, magicHeader, sizeof(magicHeader)))
+    {
+        pData += sizeof(magicHeader);
+        // uint8_t numOfElements = *pData; // commented here because it's unused for now
+        pData += 3;
+        sEvChargerData.isCarConnected = *pData;
+        pData += 3;
+        sEvChargerData.chargeLevel = *pData;
+    
+        AppTask::sAppTask.mSyncClusterToLocalAction = true; // in case there is state change
+        // if no car is connected and data says car is connected (state change)
+        if (BoltLockMgr().IsUnlocked() && sEvChargerData.isCarConnected)
+        {
+            AppEvent event;
+            event.Type                  = AppEvent::kEventType_AppEvent;
+            event.Handler = CarConnectedHandler;
+            if (xQueueSendFromISR(sAppEventQueue, &event, NULL) != pdPASS)
+            {
+                /* Failed to post the message */
+            }
+
+            if (sEvChargerData.chargeLevel == 0)
+                sEvChargerData.chargeLevel = 1; // minimum
+        }
+
+        // if car is connected and data says car is disconnected (state change)
+        else if (!BoltLockMgr().IsUnlocked() && !sEvChargerData.isCarConnected)
+        {
+            sEvChargerData.chargeLevel = 0; // fulfill the "off" relationship between Level Control and On/Off
+            
+            AppEvent event;
+            event.Type                  = AppEvent::kEventType_AppEvent;
+            event.Handler = CarDisconnectedHandler;
+            if (xQueueSendFromISR(sAppEventQueue, &event, NULL) != pdPASS)
+            {
+                /* Failed to post the message */
+            }
+        }
+
+        // no state change, car is connected and charging
+        else if (sEvChargerData.isCarConnected)
+        {
+            // no local state change/action of on/off to sync
+            AppTask::sAppTask.mSyncClusterToLocalAction = false; 
+            
+            // schedule to update cluster state
+            //chip::DeviceLayer::PlatformMgr().ScheduleWork(UpdateClusterState, reinterpret_cast<intptr_t>(nullptr));
+            AppEvent event;
+            event.Type                  = AppEvent::kEventType_AppEvent;
+            event.Handler = NewChargeData;
+            if (xQueueSendFromISR(sAppEventQueue, &event, NULL) != pdPASS)
+            {
+                /* Failed to post the message */
+            }
+            
+            // fully charged
+            if (sEvChargerData.chargeLevel >= 254)
+            {
+                sEvChargerData.chargeLevel = 254; // maximum
+                LED_stopBlinking(sAppRedHandle);
+                LED_setOn(sAppRedHandle, LED_BRIGHTNESS_MAX);
+            }
+        }
+    }
+
+    // get ready for next reading
+    int32_t status = UART_read(sUartHandle, sDataBuf, sizeof(sDataBuf));
+    if (status != UART_STATUS_SUCCESS)
+        LocalErrorSpin();
 }
 
 int AppTask::StartAppTask()
@@ -114,7 +232,7 @@ int AppTask::Init()
     LED_Params ledParams;
     Button_Params buttonParams;
 
-    cc13x2_26x2LogInit();
+    // cc13x2_26x2LogInit();
 
     // Init Chip memory management before the stack
     Platform::MemoryInit();
@@ -195,6 +313,29 @@ int AppTask::Init()
     buttonParams.longPressDuration = 1000U; // ms
     sAppRightHandle                = Button_open(CONFIG_BTN_RIGHT, &buttonParams);
     Button_setCallback(sAppRightHandle, ButtonRightEventHandler);
+
+    // Initialize UART for cluster updates from host (e.g. charging status and charge level)
+    UART_init();
+    UART_Params uartParams;
+    UART_Params_init(&uartParams);
+    uartParams.readMode = UART_MODE_CALLBACK;
+    uartParams.readCallback = AppUartReadCallback;
+    uartParams.readDataMode = UART_DATA_BINARY;
+    uartParams.readReturnMode = UART_RETURN_FULL;
+    uartParams.baudRate = 115200;
+    sUartHandle = UART_open(CONFIG_UART_DEBUG, &uartParams);
+    if (sUartHandle == 0)
+    {
+        LocalErrorSpin();
+    }
+    else
+    {
+#if 1
+        int32_t status = UART_read(sUartHandle, sDataBuf, sizeof(sDataBuf));
+        if (status != UART_STATUS_SUCCESS)
+            LocalErrorSpin();
+#endif
+    }
 
     // Initialize BoltLock module
     PLAT_LOG("Initialize BoltLock");
@@ -283,16 +424,17 @@ void AppTask::ActionInitiated(BoltLockManager::Action_t aAction, BoltLockManager
     // and start flashing the LEDs rapidly to indicate action initiation.
     if (aAction == BoltLockManager::LOCK_ACTION)
     {
-        PLAT_LOG("Lock initiated");     
+        // PLAT_LOG("Lock initiated");     
+        PLAT_LOG("Car is connecting");     
     }
     else if (aAction == BoltLockManager::UNLOCK_ACTION)
     {
-        PLAT_LOG("Unlock initiated");
+        PLAT_LOG("Car is disconnecting");
     }
 
     if (BoltLockManager::ACTOR_APP == aActor)
     {
-        sAppTask.mSyncClusterToButtonAction = true;
+        sAppTask.mSyncClusterToLocalAction = true;
     }
 
 }
@@ -314,10 +456,10 @@ void AppTask::ActionCompleted(BoltLockManager::Action_t aAction)
         LED_setOff(sAppRedHandle);
     }
     
-    if (sAppTask.mSyncClusterToButtonAction)
+    if (sAppTask.mSyncClusterToLocalAction)
     {
         chip::DeviceLayer::PlatformMgr().ScheduleWork(UpdateClusterState, reinterpret_cast<intptr_t>(nullptr));
-        sAppTask.mSyncClusterToButtonAction = false;
+        sAppTask.mSyncClusterToLocalAction = false;
     }
 }
 
@@ -338,10 +480,7 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
             // Disable BLE advertisements
             if (ConnectivityMgr().IsBLEAdvertisingEnabled())
             {
-                ConnectivityMgr().SetBLEAdvertisingEnabled(false);
-                PLAT_LOG("Disabled BLE Advertisements");
-		LED_stopBlinking(sAppGreenHandle);
-		LED_setOff(sAppGreenHandle);
+                chip::Server::GetInstance().ScheduleFactoryReset();
             }
         }
         break;
@@ -422,19 +561,19 @@ void AppTask::RoutineLevelAdjust(chip::System::Layer * systemLayer, void * appSt
     // if Level is not already maxed out
     if (curLevel < 232)
     {
-    	// adjust Level Control
-	// note: writing the attribute will trigger the report
-	uint8_t newLevel = curLevel + 2;
-	status = emberAfWriteAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
-						     (uint8_t *) &newLevel, ZCL_INT8U_ATTRIBUTE_TYPE);
-	if (status != EMBER_ZCL_STATUS_SUCCESS)
-	{
-	    PLAT_LOG("ERR: updating Level Control %x", status);
-	    return;
-	}
-	
-   	// start countdown for next call of this function
-	chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), RoutineLevelAdjust, reinterpret_cast<intptr_t>(nullptr));	
+        // adjust Level Control
+        // note: writing the attribute will trigger the report
+        uint8_t newLevel = curLevel + 2;
+        status = emberAfWriteAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
+                                 (uint8_t *) &newLevel, ZCL_INT8U_ATTRIBUTE_TYPE);
+        if (status != EMBER_ZCL_STATUS_SUCCESS)
+        {
+            PLAT_LOG("ERR: updating Level Control %x", status);
+            return;
+        }
+        
+        // start countdown for next call of this function
+        chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), RoutineLevelAdjust, reinterpret_cast<intptr_t>(nullptr));	
     }
     else
     {
@@ -449,7 +588,25 @@ void AppTask::RoutineLevelAdjust(chip::System::Layer * systemLayer, void * appSt
 void AppTask::UpdateClusterState(intptr_t context)
 {
     PLAT_LOG("AppTask::UpdateClusterState");
+    
+    // write the new on/off value
+    EmberAfStatus status = emberAfWriteAttribute(1, ZCL_ON_OFF_CLUSTER_ID, ZCL_ON_OFF_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
+                                                 (uint8_t *) &sEvChargerData.isCarConnected, ZCL_BOOLEAN_ATTRIBUTE_TYPE);
+    if (status != EMBER_ZCL_STATUS_SUCCESS)
+    {
+        PLAT_LOG("ERR: updating on/off %x", status);
+	    return;
+    }
+    
+    status = emberAfWriteAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
+                                                 (uint8_t *) &sEvChargerData.chargeLevel, ZCL_INT8U_ATTRIBUTE_TYPE);
+    if (status != EMBER_ZCL_STATUS_SUCCESS)
+    {
+        PLAT_LOG("ERR: updating Level Control %x", status);
+        return;
+    }
 
+    /*
     uint8_t newValue = !BoltLockMgr().IsUnlocked();
 
     // write the new on/off value
@@ -458,8 +615,9 @@ void AppTask::UpdateClusterState(intptr_t context)
     if (status != EMBER_ZCL_STATUS_SUCCESS)
     {
         PLAT_LOG("ERR: updating on/off %x", status);
-	return;
+	    return;
     }
+    
     uint8_t newLevel = 64; // ~25%
     status = emberAfWriteAttribute(1, ZCL_LEVEL_CONTROL_CLUSTER_ID, ZCL_CURRENT_LEVEL_ATTRIBUTE_ID, CLUSTER_MASK_SERVER,
                                                  (uint8_t *) &newLevel, ZCL_INT8U_ATTRIBUTE_TYPE);
@@ -469,10 +627,12 @@ void AppTask::UpdateClusterState(intptr_t context)
         return;
     }
     
+    
     if (newValue)
     {
         chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), RoutineLevelAdjust, reinterpret_cast<intptr_t>(nullptr));
     }
+    */
     
 }
 
@@ -506,4 +666,17 @@ void AppTask::CheckCommissioningStatus(chip::System::Layer * systemLayer, void *
    	// start countdown for next checkup
 	chip::DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Seconds16(2), CheckCommissioningStatus, reinterpret_cast<intptr_t>(nullptr));	
 
+}
+
+void AppTask::CarConnectedHandler(AppEvent * appEvent)
+{
+    BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_APP, BoltLockManager::LOCK_ACTION);
+}
+void AppTask::CarDisconnectedHandler(AppEvent * appEvent)
+{
+    BoltLockMgr().InitiateAction(BoltLockManager::ACTOR_APP, BoltLockManager::UNLOCK_ACTION);
+}
+void AppTask::NewChargeData(AppEvent * appEvent)
+{    
+    chip::DeviceLayer::PlatformMgr().ScheduleWork(UpdateClusterState, reinterpret_cast<intptr_t>(nullptr));
 }

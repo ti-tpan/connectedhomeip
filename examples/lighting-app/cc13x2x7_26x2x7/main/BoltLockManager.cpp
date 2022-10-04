@@ -39,7 +39,7 @@ int BoltLockManager::Init()
             ;
     }
 
-    mState              = kState_LockingCompleted;
+    mState              = kState_UnlockingCompleted;
     mAutoLockTimerArmed = false;
     mAutoRelock         = false;
     mAutoLockDuration   = 0;
