@@ -297,10 +297,10 @@ void AppTask::ActionInitiated(BoltLockManager::Action_t aAction, BoltLockManager
         sAppTask.mSyncClusterToButtonAction = true;
     }
 
-    LED_setOn(sAppGreenHandle, LED_BRIGHTNESS_MAX);
-    LED_startBlinking(sAppGreenHandle, 50 /* ms */, LED_BLINK_FOREVER);
-    LED_setOn(sAppRedHandle, LED_BRIGHTNESS_MAX);
-    LED_startBlinking(sAppRedHandle, 110 /* ms */, LED_BLINK_FOREVER);
+    //LED_setOn(sAppGreenHandle, LED_BRIGHTNESS_MAX);
+    //LED_startBlinking(sAppGreenHandle, 50 /* ms */, LED_BLINK_FOREVER);
+    //LED_setOn(sAppRedHandle, LED_BRIGHTNESS_MAX);
+    //LED_startBlinking(sAppRedHandle, 110 /* ms */, LED_BLINK_FOREVER);
 }
 
 void AppTask::ActionCompleted(BoltLockManager::Action_t aAction)
@@ -311,17 +311,17 @@ void AppTask::ActionCompleted(BoltLockManager::Action_t aAction)
     if (aAction == BoltLockManager::LOCK_ACTION)
     {
         PLAT_LOG("Lock completed");
-        LED_stopBlinking(sAppGreenHandle);
+        //LED_stopBlinking(sAppGreenHandle);
         LED_setOn(sAppGreenHandle, LED_BRIGHTNESS_MAX);
-        LED_stopBlinking(sAppRedHandle);
+        //LED_stopBlinking(sAppRedHandle);
         LED_setOn(sAppRedHandle, LED_BRIGHTNESS_MAX);
     }
     else if (aAction == BoltLockManager::UNLOCK_ACTION)
     {
         PLAT_LOG("Unlock completed");
-        LED_stopBlinking(sAppGreenHandle);
+        //LED_stopBlinking(sAppGreenHandle);
         LED_setOff(sAppGreenHandle);
-        LED_stopBlinking(sAppRedHandle);
+        //LED_stopBlinking(sAppRedHandle);
         LED_setOff(sAppRedHandle);
     }
     
