@@ -478,7 +478,7 @@ void AppTask::DispatchEvent(AppEvent * aEvent)
         else if (AppEvent::kAppEventButtonType_LongClicked == aEvent->ButtonEvent.Type)
         {
             // Disable BLE advertisements
-            if (ConnectivityMgr().IsBLEAdvertisingEnabled())
+            //if (ConnectivityMgr().IsBLEAdvertisingEnabled())
             {
                 chip::Server::GetInstance().ScheduleFactoryReset();
             }
